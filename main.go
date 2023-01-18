@@ -27,13 +27,12 @@ type Query struct {
 }
 
 type ServerResp struct {
-	Search_type string      `json:"search_type"`
-	Query       Query       `json:"query"`
-	Sort_fields []string    `json:"sort_fields"`
-	From        uint        `json:"from"`
-	Max_results uint        `json:"max_results"`
-	Source      []string    `json:"_source"`
-	Auth        Credentials `json:"auth"`
+	Search_type string   `json:"search_type"`
+	Query       Query    `json:"query"`
+	Sort_fields []string `json:"sort_fields"`
+	From        uint     `json:"from"`
+	Max_results uint     `json:"max_results"`
+	Source      []string `json:"_source"`
 }
 
 func main() {
@@ -61,7 +60,7 @@ func main() {
 }
 
 func searchController(w http.ResponseWriter, r *http.Request) {
-	//privateEndpoint := globals.ZINC_ENDPOINT + "/" + globals.ZINC_INDEX + "/_search" RUTA A UTILIZAR CON LA API INTERNA
+
 	w.Header().Set("Content-Type", "application/json")
 
 	//Obtener header de Auth
@@ -122,18 +121,33 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		Query: Query{
 			Term: querystring,
 		},
-		Sort_fields: []string{"-date"},
-		From:        0,
-		Max_results: 20,
-		Source:      []string{"from", "subject", "date"},
-		Auth:        credentials,
+		Sort_fields: []string{"-date"},                   //Pasar campo para ordenar
+		From:        0,                                   //Pasar limite inferior
+		Max_results: 20,                                  //Pasar limite superior
+		Source:      []string{"from", "subject", "date"}, //Pasar campos a retornar
 	}
 	respJson, _ := json.Marshal(resp)
 
-	//TODO: Petición a api de Zincsearch
+	//Petición a api de Zincsearch
+	privateEndpoint := globals.ZINC_ENDPOINT + "/" + globals.ZINC_INDEX + "/_search" //RUTA A UTILIZAR CON LA API INTERNA
+	zincReq, err := http.NewRequest("POST", privateEndpoint, strings.NewReader(string(respJson)))
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	zincReq.SetBasicAuth(credentials.User, credentials.Pwd)
+	zincReq.Header.Set("Content-type", "application/json")
+
+	zincResp, err := http.DefaultClient.Do(zincReq)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer zincResp.Body.Close()
+
+	zincBody, _ := io.ReadAll(zincResp.Body)
 
 	//Enviar respuesta a cliente
-	w.Write(respJson)
+	w.Write(zincBody)
 
 }
 
