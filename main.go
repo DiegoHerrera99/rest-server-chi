@@ -3,23 +3,37 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"rest-server-chi/globals"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
 
-type ClientReq struct {
-	Field string `json:"field,omitempty"`
-	Query string `json:"query"`
-	Auth  string `json:"auth"`
+type Credentials struct {
+	User string `json:"user"`
+	Pwd  string `json:"pwd"`
 }
 
-type ErrAns struct {
-	Msg string `json:"msg"`
+type Query struct {
+	Term       string `json:"term"`
+	Start_time string `json:"start_time,omitempty"`
+	End_time   string `json:"end_time,omitempty"`
+}
+
+type ServerResp struct {
+	Search_type string      `json:"search_type"`
+	Query       Query       `json:"query"`
+	Sort_fields []string    `json:"sort_fields"`
+	From        uint        `json:"from"`
+	Max_results uint        `json:"max_results"`
+	Source      []string    `json:"_source"`
+	Auth        Credentials `json:"auth"`
 }
 
 func main() {
@@ -38,7 +52,7 @@ func main() {
 	r.Use(middleware.Logger)
 
 	//Rutas
-	r.Post("/api/busqueda", searchController)
+	r.Get("/api/busqueda", searchController)
 
 	//Levantar server
 	fmt.Printf("Rest server corriendo en: http://localhost:%v \n", globals.PORT)
@@ -52,15 +66,14 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 
 	//Obtener header de Auth
 	auth64 := r.Header.Get("Authorization")
-	auth, err := base64.StdEncoding.DecodeString(auth64)
 
 	//Validación de auth
-	//TODO: Validar contra credenciales de Zincsearch
+	credentials, err := isAuth(auth64)
 	if err != nil {
-		ans := ErrAns{Msg: "Bad Request | Incorrect Credentials"}
+		msg := make(map[string]string)
+		msg["msg"] = err.Error()
 
-		ansJson, err := json.Marshal(ans)
-
+		ansJson, err := json.Marshal(msg)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -71,11 +84,14 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(auth) == 0 {
-		ans := ErrAns{Msg: "Bad Request | No Credentials"}
+	//Obtener parametros
+	body, err := io.ReadAll(r.Body)
 
-		ansJson, err := json.Marshal(ans)
+	if err != nil {
+		msg := make(map[string]string)
+		msg["msg"] = err.Error()
 
+		ansJson, err := json.Marshal(msg)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -86,18 +102,56 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Obtener parametros
-	fieldParam := r.URL.Query().Get("field")
-	queryParam := r.URL.Query().Get("query")
+	req := make(map[string]string)
+	json.Unmarshal([]byte(body), &req)
+	field := req["field"]
+	query := req["query"]
 
-	//TODO: Obtener y enviar respuesta
-	resp := ClientReq{fieldParam, queryParam, string(auth)}
-
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		fmt.Println(err)
+	//Construcción de petición a API de ZincSearch
+	var search_type, querystring string
+	if len(field) > 0 {
+		search_type = "querystring"
+		querystring = field + `:"` + query + `"`
+	} else {
+		search_type = "matchphrase"
+		querystring = query
 	}
 
-	w.Write(jsonResp)
+	resp := ServerResp{
+		Search_type: search_type,
+		Query: Query{
+			Term: querystring,
+		},
+		Sort_fields: []string{"-date"},
+		From:        0,
+		Max_results: 20,
+		Source:      []string{"from", "subject", "date"},
+		Auth:        credentials,
+	}
+	respJson, _ := json.Marshal(resp)
+
+	//TODO: Petición a api de Zincsearch
+
+	//Enviar respuesta a cliente
+	w.Write(respJson)
+
+}
+
+// Función para validar credenciales de Zincsearch
+func isAuth(auth64 string) (Credentials, error) {
+	auth, err := base64.StdEncoding.DecodeString(auth64)
+	authSlice := strings.Split(string(auth), ":")
+
+	if len(auth) == 0 {
+		return Credentials{}, errors.New("no credentials")
+	}
+
+	credentials := Credentials{authSlice[0], authSlice[1]}
+
+	if err != nil || credentials.User != globals.ZINC_USER || credentials.Pwd != globals.ZINC_PWD {
+		return credentials, errors.New("incorrect credentials")
+	}
+
+	return credentials, nil
 
 }
