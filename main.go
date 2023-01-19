@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/cors"
 )
 
+// DEFINICIÓN DE TYPES
 type Credentials struct {
 	User string `json:"user"`
 	Pwd  string `json:"pwd"`
@@ -43,7 +44,6 @@ type ClientReq struct {
 	Range  []uint   `json:"range"`
 }
 
-// TODO: ESTRUCTURAS PARA ARMAR RESPUESTA A CLIENTE
 type Hit struct {
 	Index  string            `json:"_index"`
 	Source map[string]string `json:"_source"`
@@ -64,9 +64,8 @@ type zincResult struct {
 }
 
 type ServerResp struct {
-	Timedout bool                `json:"timeout"`
-	Total    uint                `json:"total"`
-	Results  []map[string]string `json:"results"`
+	Total   uint                `json:"total"`
+	Results []map[string]string `json:"results"`
 }
 
 func main() {
@@ -135,11 +134,12 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//CREACIÓN DE REQUEST LÉGIBLE
 	req := ClientReq{}
 	json.Unmarshal([]byte(body), &req)
 	fmt.Printf("CLIENT QUERY: %v \n", req)
 
-	//Construcción de petición a API de ZincSearch
+	//CONSTRUCCIÓN DE PETICIÓN DE API ZINCSEARCH
 	var search_type, querystring string
 	if len(req.Field) > 0 {
 		search_type = "querystring"
@@ -161,7 +161,7 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 	}
 	respJson, _ := json.Marshal(resp)
 
-	//Petición a api de Zincsearch
+	//PETICIÓN A API ZINCSEARCH
 	privateEndpoint := globals.ZINC_ENDPOINT + "/" + globals.ZINC_INDEX + "/_search" //RUTA A UTILIZAR CON LA API INTERNA
 	zincReq, err := http.NewRequest("POST", privateEndpoint, strings.NewReader(string(respJson)))
 	if err != nil {
@@ -177,24 +177,44 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 	}
 	defer zincResp.Body.Close()
 
+	//LECTURA DE RESPUESTA
 	zincBody, _ := io.ReadAll(zincResp.Body)
 
+	//OBTENCION DE DATOS DE ZINCSEARCH (CONVERSIÓN DE JSON A STRUCT)
 	zincResult := zincResult{}
 	json.Unmarshal(zincBody, &zincResult)
 
+	//VALIDACIÓN DE ERRORES
+	if zincResult.Timedout {
+		msg := make(map[string]string)
+		msg["msg"] = "request timeout"
+
+		ansJson, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		w.WriteHeader(408)
+		w.Write(ansJson)
+
+		return
+	}
+
+	//OBTENER RESULTADOS DE BUSQUEDA
 	results := make([]map[string]string, 0)
 	for _, result := range zincResult.Hits.Hits {
 		results = append(results, result.Source)
 	}
 
-	serverResp := ServerResp{zincResult.Timedout, zincResult.Hits.Total.Value, results}
+	//FORMATEO DE RESPUESTA DE ZINC A RESPUESTA DE NUESTRO SERVER
+	serverResp := ServerResp{zincResult.Hits.Total.Value, results}
 
 	serverRespJSON, err := json.Marshal(serverResp)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	//Enviar respuesta a cliente
+	//ENVIAR RESPUESTA A CLIENTE
 	w.Write(serverRespJSON)
 
 }
