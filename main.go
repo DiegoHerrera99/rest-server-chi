@@ -26,13 +26,47 @@ type Query struct {
 	End_time   string `json:"end_time,omitempty"`
 }
 
-type ServerResp struct {
+type ZincSearchQuery struct {
 	Search_type string   `json:"search_type"`
 	Query       Query    `json:"query"`
 	Sort_fields []string `json:"sort_fields"`
 	From        uint     `json:"from"`
 	Max_results uint     `json:"max_results"`
 	Source      []string `json:"_source"`
+}
+
+type ClientReq struct {
+	Field  string   `json:"field,omitempty"`
+	Query  string   `json:"query"`
+	Sort   []string `json:"sort"`
+	Fields []string `json:"fields"`
+	Range  []uint   `json:"range"`
+}
+
+// TODO: ESTRUCTURAS PARA ARMAR RESPUESTA A CLIENTE
+type Hit struct {
+	Index  string            `json:"_index"`
+	Source map[string]string `json:"_source"`
+}
+
+type Total struct {
+	Value uint `json:"value"`
+}
+
+type Hits struct {
+	Total Total `json:"total"`
+	Hits  []Hit `json:"hits"`
+}
+
+type zincResult struct {
+	Timedout bool `json:"timed_out"`
+	Hits     Hits `json:"hits"`
+}
+
+type ServerResp struct {
+	Timedout bool                `json:"timeout"`
+	Total    uint                `json:"total"`
+	Results  []map[string]string `json:"results"`
 }
 
 func main() {
@@ -101,30 +135,29 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := make(map[string]string)
+	req := ClientReq{}
 	json.Unmarshal([]byte(body), &req)
-	field := req["field"]
-	query := req["query"]
+	fmt.Printf("CLIENT QUERY: %v \n", req)
 
 	//Construcción de petición a API de ZincSearch
 	var search_type, querystring string
-	if len(field) > 0 {
+	if len(req.Field) > 0 {
 		search_type = "querystring"
-		querystring = field + `:"` + query + `"`
+		querystring = req.Field + `:"` + req.Query + `"`
 	} else {
 		search_type = "matchphrase"
-		querystring = query
+		querystring = req.Query
 	}
 
-	resp := ServerResp{
+	resp := ZincSearchQuery{
 		Search_type: search_type,
 		Query: Query{
 			Term: querystring,
 		},
-		Sort_fields: []string{"-date"},                   //Pasar campo para ordenar
-		From:        0,                                   //Pasar limite inferior
-		Max_results: 20,                                  //Pasar limite superior
-		Source:      []string{"from", "subject", "date"}, //Pasar campos a retornar
+		Sort_fields: req.Sort,     //Pasar campo para ordenar
+		From:        req.Range[0], //Pasar limite inferior
+		Max_results: req.Range[1], //Pasar limite superior
+		Source:      req.Fields,   //Pasar campos a retornar
 	}
 	respJson, _ := json.Marshal(resp)
 
@@ -146,8 +179,23 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 
 	zincBody, _ := io.ReadAll(zincResp.Body)
 
+	zincResult := zincResult{}
+	json.Unmarshal(zincBody, &zincResult)
+
+	results := make([]map[string]string, 0)
+	for _, result := range zincResult.Hits.Hits {
+		results = append(results, result.Source)
+	}
+
+	serverResp := ServerResp{zincResult.Timedout, zincResult.Hits.Total.Value, results}
+
+	serverRespJSON, err := json.Marshal(serverResp)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	//Enviar respuesta a cliente
-	w.Write(zincBody)
+	w.Write(serverRespJSON)
 
 }
 
