@@ -84,7 +84,7 @@ func main() {
 	r.Use(middleware.Logger)
 
 	//Rutas
-	r.Get("/api/busqueda", searchController)
+	r.Post("/api/busqueda", searchController)
 
 	//Levantar server
 	fmt.Printf("Rest server corriendo en: http://localhost:%v \n", globals.PORT)
