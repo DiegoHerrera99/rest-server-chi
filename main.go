@@ -39,9 +39,9 @@ type ZincSearchQuery struct {
 type ClientReq struct {
 	Field  string   `json:"field,omitempty"`
 	Query  string   `json:"query"`
-	Sort   []string `json:"sort"`
-	Fields []string `json:"fields"`
-	Range  []uint   `json:"range"`
+	Sort   []string `json:"sort,omitempty"`
+	Fields []string `json:"fields,omitempty"`
+	Range  []uint   `json:"range,omitempty"`
 }
 
 type Hit struct {
@@ -139,6 +139,34 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal([]byte(body), &req)
 	fmt.Printf("CLIENT QUERY: %v \n", req)
 
+	//SANITIZACIÓN DE REQUEST -- VALIDACIONES
+	if len(req.Query) == 0 {
+		msg := make(map[string]string)
+		msg["msg"] = "empty query"
+
+		ansJson, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		w.WriteHeader(400)
+		w.Write(ansJson)
+
+		return
+	}
+
+	if len(req.Fields) == 0 {
+		req.Fields = []string{"subject", "from", "date"}
+	}
+
+	if len(req.Range) == 0 {
+		req.Range = []uint{0, 10}
+	}
+
+	if len(req.Sort) == 0 {
+		req.Sort = []string{"-date"}
+	}
+
 	//CONSTRUCCIÓN DE PETICIÓN DE API ZINCSEARCH
 	var search_type, querystring string
 	if len(req.Field) > 0 {
@@ -159,7 +187,10 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 		Max_results: req.Range[1], //Pasar limite superior
 		Source:      req.Fields,   //Pasar campos a retornar
 	}
-	respJson, _ := json.Marshal(resp)
+	respJson, err := json.Marshal(resp)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	//PETICIÓN A API ZINCSEARCH
 	privateEndpoint := globals.ZINC_ENDPOINT + "/" + globals.ZINC_INDEX + "/_search" //RUTA A UTILIZAR CON LA API INTERNA
