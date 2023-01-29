@@ -156,7 +156,7 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.Fields) == 0 {
-		req.Fields = []string{"subject", "from", "date"}
+		req.Fields = []string{"subject", "from", "date", "to", "body"}
 	}
 
 	if len(req.Range) == 0 {
