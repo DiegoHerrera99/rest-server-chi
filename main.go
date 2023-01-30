@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"rest-server-chi/globals"
 	"strings"
 
@@ -70,6 +72,14 @@ type ServerResp struct {
 
 func main() {
 
+	//GET PORT
+	var port string
+	if len(os.Args) < 2 {
+		port = globals.PORT
+	} else {
+		port = os.Args[1]
+	}
+
 	//Iniciar Router
 	r := chi.NewRouter()
 
@@ -86,9 +96,14 @@ func main() {
 	//Rutas
 	r.Post("/api/busqueda", searchController)
 
+	//Crear servidor de contenido estatico (Frontend - Vue3)
+	workDir, _ := os.Getwd()
+	filesDir := http.Dir(filepath.Join(workDir, "public"))
+	FileServer(r, "/", filesDir)
+
 	//Levantar server
-	fmt.Printf("Rest server corriendo en: http://localhost:%v \n", globals.PORT)
-	http.ListenAndServe(":"+globals.PORT, r)
+	fmt.Printf("Email reader corriendo en: http://localhost:%v/ \n", port)
+	http.ListenAndServe(":"+port, r)
 
 }
 
@@ -268,4 +283,25 @@ func isAuth(auth64 string) (Credentials, error) {
 
 	return credentials, nil
 
+}
+
+// FileServer conveniently sets up a http.FileServer handler to serve
+// static files from a http.FileSystem.
+func FileServer(r chi.Router, path string, root http.FileSystem) {
+	if strings.ContainsAny(path, "{}*") {
+		panic("FileServer does not permit any URL parameters.")
+	}
+
+	if path != "/" && path[len(path)-1] != '/' {
+		r.Get(path, http.RedirectHandler(path+"/", 301).ServeHTTP)
+		path += "/"
+	}
+	path += "*"
+
+	r.Get(path, func(w http.ResponseWriter, r *http.Request) {
+		rctx := chi.RouteContext(r.Context())
+		pathPrefix := strings.TrimSuffix(rctx.RoutePattern(), "/*")
+		fs := http.StripPrefix(pathPrefix, http.FileServer(root))
+		fs.ServeHTTP(w, r)
+	})
 }
