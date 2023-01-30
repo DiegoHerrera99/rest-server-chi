@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -74,11 +75,9 @@ func main() {
 
 	//GET PORT
 	var port string
-	if len(os.Args) < 2 {
-		port = globals.PORT
-	} else {
-		port = os.Args[1]
-	}
+	flag.StringVar(&port, "port", globals.PORT, "specify port number")
+	flag.StringVar(&port, "p", globals.PORT, "specify port number")
+	flag.Parse()
 
 	//Iniciar Router
 	r := chi.NewRouter()
