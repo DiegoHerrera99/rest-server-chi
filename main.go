@@ -45,8 +45,8 @@ type ClientReq struct {
 }
 
 type Hit struct {
-	Index  string            `json:"_index"`
 	Source map[string]string `json:"_source"`
+	Id     string            `json:"_id"`
 }
 
 type Total struct {
@@ -234,6 +234,7 @@ func searchController(w http.ResponseWriter, r *http.Request) {
 	//OBTENER RESULTADOS DE BUSQUEDA
 	results := make([]map[string]string, 0)
 	for _, result := range zincResult.Hits.Hits {
+		result.Source["id"] = result.Id
 		results = append(results, result.Source)
 	}
 
