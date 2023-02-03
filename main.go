@@ -284,8 +284,7 @@ func isAuth(auth64 string) (Credentials, error) {
 
 }
 
-// FileServer conveniently sets up a http.FileServer handler to serve
-// static files from a http.FileSystem.
+// Servidor estatico para servir el frontend
 func FileServer(r chi.Router, path string, root http.FileSystem) {
 	if strings.ContainsAny(path, "{}*") {
 		panic("FileServer does not permit any URL parameters.")
